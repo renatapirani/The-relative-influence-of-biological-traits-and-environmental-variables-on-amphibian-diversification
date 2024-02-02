@@ -1,0 +1,245 @@
+---
+title: "BAMM_amphibians_data for Portik et al.(2023) phylogeny"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-01-26"
+---
+
+-   Walter and Pyron, 2018 phylogeny for 7,238 amphibian species, but it is not a binary tree. On the paper they ran the package "picante" to find the species evolutionary distinctiveness (ED). Here we will use the same tree to run BAMM (suplemmentary material)
+
+-   here I will run the script for the Porkit et al. 2023 phylogeny (5,326 species)
+
+- plot the histagram of the species tips ...to do 
+
+1.  Load the packages and the phylogenetic tree
+
+```{r}
+setwd("/Users/renatapirani/Documents/UCLA/Project/Speciation_Rate/bamm/Amphibian_BAMM/")
+library(phytools)
+library(ape)
+library(stringr)
+library(phylotools)
+library(tidyverse)
+library(dplyr)
+library(plotrix)
+library(tidyr)
+library(phangorn)
+library(BAMMtools)
+
+basepath <- '~/Documents/UCLA/Project/Tree_Analyses/Amphibian_tree-Portik.2023/TreePL (time-calibrated)/'
+Amph.tree     <- paste0(basepath, "TreePL-Rooted_Anura_bestTree.tre")
+Amph.tree     <- read.tree(Amph.tree)
+#Amph.tree$root.edge <- 0 # if the tree is not rooted
+head(Amph.tree$tip.label)
+is.ultrametric(Amph.tree) # has to the FASLE
+is.binary(Amph.tree) # has to the TRUE
+is.rooted(Amph.tree)
+
+```
+
+2.  Force the tree to be ultrametric (<http://blog.phytools.org/2017/03/forceultrametric-method-for-ultrametric.html>)
+
+```{r}
+force.ultrametric<-function(Amph.tree,method=c("extend")){
+  method<-method[1]
+  if(method=="nnls") Amph.tree<-nnls.tree(cophenetic(Amph.tree),Amph.tree,
+                                     rooted=TRUE,trace=0)
+  else if(method=="extend"){
+    h<-diag(vcv(Amph.tree))
+    d<-max(h)-h
+    ii<-sapply(1:Ntip(Amph.tree),function(x,y) which(y==x),
+               y=Amph.tree$edge[,2])
+    Amph.tree$edge.length[ii]<-Amph.tree$edge.length[ii]+d
+  } else 
+    cat("method not recognized: returning input tree\n\n")
+  Amph.tree
+}
+
+Amph.tree<-force.ultrametric(Amph.tree) ## default method
+is.ultrametric(Amph.tree) # has to the TRUE
+is.binary(Amph.tree) # has to the TRUE
+is.rooted(Amph.tree) # has to the TRUE
+min(Amph.tree$edge.length) # check min branch length:
+
+## making a binary tree
+#Amph.tree <- multi2di(Amph.tree) 
+
+## save Amph.tree to run BAMM
+write.tree(Amph.tree, file = "Amph.final.tre", append = FALSE,
+           digits = 5326, tree.names = FALSE)
+
+### read the tree and plot it in fan size
+
+```
+
+3.  Setting up BAMM prior (<http://bamm-project.org/>) for Amph.tree including 5,326 species (Portik et al. 2023)
+
+```{r}
+setBAMMpriors(read.tree("Amph.final.tre"))
+#Results at the file myPriors.txt
+#Prior block chosen by BAMMtools::setBAMMpriors
+#expectedNumberOfShifts = 1.0
+#lambdaInitPrior = 8.90043262279917
+#lambdaShiftPrior = 0.00328005590193049
+#muInitPrior = 8.90043262279917
+```
+
+4.  Change these parameters in a .txt file or you can do it here
+
+```{r}
+generateControlFile('divcontrol.txt', type = 'diversification', params = list(
+  treefile = 'Amph.final.tre',
+  globalSamplingFraction = '0.66',           # according to IUCN, total of 8,030 species
+  numberOfGenerations = '50000000',          # test with 50 million
+  overwrite = '0',
+  lambdaInitPrior = '8.90043262279917',      # parameter for the speciation rate
+  lambdaShiftPrior = '0.00328005590193049',  # standard deviation of the normal distribution
+  muInitPrior = '8.90043262279917',          # extinction rate
+  expectedNumberOfShifts = '1.0'))            # since the tree has 5326 tips, I tested with 10 and 1.0  
+```
+
+5.  BAMM Results
+
+```{r}
+tree <- read.tree("Amph.final.tre")
+edata <- getEventData(tree, eventdata = "event_data.txt", burnin=0.1) #test with 5 million gen
+
+## Assessing MCMC convergence
+mcmcout <- read.csv("mcmc_out.txt", header=T)
+plot(mcmcout$logLik ~ mcmcout$generation)
+```
+
+6.  Discart 10% of burnin
+
+```{r}
+burnstart <- floor(0.1 * nrow(mcmcout))
+postburn <- mcmcout[burnstart:nrow(mcmcout), ]
+```
+
+7.  Check the effective sample sizes of the log-likelihood and the number of shift events present in each sample ( ideal is to be \> 200)
+
+```{r}
+library(coda)
+effectiveSize(postburn$N_shifts) # = 773.7464
+effectiveSize(postburn$logLik) # = 358.3198
+```
+
+8.  Posterior probabilities of each rate shift count observed during simulation of the posterior.
+
+```{r}
+shift_probs <- summary(edata) #
+```
+
+9.  Estimating clade-specific rates, which compute the overall rate of speciation, extinction, or trait evolution
+
+```{r}
+## Calculation of extinction and Speciation rates and for all the amphibians
+allrates <- getCladeRates(edata)
+
+## mean speciation rate for the data and estimate the 90% highest posterior density 
+mean(allrates$lambda) # = 0.08951278, low speciation
+mean(allrates$mu) # = 0.003490983
+mean(edata$meanTipMu) # = 0.004701874
+quantile(allrates$lambda, c(0.05, 0.95))
+```
+
+10. How to find the most recent ancestral data (plot labels by family)
+
+```{r}
+plotRateThroughTime(edata, ratetype="speciation") # for all species
+plot.phylo(tree, ftype="i",fsize=0.2,lwd=1, cex = 0.1)
+nodelabels()      ## check the clades number for each family / plot it in the normal R version 
+
+## another way to get the nodes labels - Higher clade with high Speciation rates
+species1 <- "Telmatobius_niger"
+species2 <- "Telmatobius_vellardi"
+tipnode1 <- which(tree$tip.label == species1)
+tipnode2 <- which(tree$tip.label == species2)
+mrca <- getMRCA(tree, tip = c(tipnode1, tipnode2))
+plotRateThroughTime(edata, node = mrca, nodetype="include", ylim=c(0,0.7)) #plot only the clade that you selected
+```
+
+11. Calculate speciation rates for a specific clade - check the getMRCA function first
+
+```{r}
+Telmatobius_rates <- getCladeRates(edata, node=8289) # I know this clade has high speciation rates
+mean(Telmatobius_rates$lambda) # = 0.3025056, high compare to the rest of the tree
+```
+
+12. Computing the mean rate only for the background lineages, excluding the slected clade using 'node'
+
+```{r}
+non_Telm_rate <- getCladeRates(edata, node = 8289, nodetype = "exclude")
+mean(non_Telm_rate$lambda)
+quantile(non_Telm_rate$lambda, c(0.05, 0.95))
+```
+
+13.Prior distribution on the number of rate shifts (recommended)
+
+```{r}
+css <- credibleShiftSet(edata, expectedNumberOfShifts=1, threshold=5, set.limit = 0.95)
+css$number.distinct # = 8550
+css$indices[[1]] # = 609 1476
+summary(css)
+#plot.credibleshiftset(css)
+
+```
+
+14. Maximum clade credibility tree - extract the shift configuration that maximizes the marginal probability of rate shifts along individual branches
+
+```{r}
+msc.set <- maximumShiftCredibility(edata, maximize='product')
+msc.config <- subsetEventData(edata, index = msc.set$sampleindex)
+plot.bammdata(msc.config, lwd=2)
+addBAMMshifts(msc.config, cex = 2)
+```
+
+15.Finding the single best shift configuration
+
+```{r}
+best <- getBestShiftConfiguration(edata, expectedNumberOfShifts=1)
+plot.bammdata(best, lwd = 2)
+addBAMMshifts(best, cex=1.5) ## for this to work plot in the normal version of R
+```
+
+16. Viewing some random shift configurations
+
+```{r}
+dsc <- distinctShiftConfigurations(edata, expectedNumberOfShifts=1, threshold=5)
+# Here is one random sample with the BEST shift configuration
+plot.bammshifts(dsc, edata, rank=1, legend=F)
+```
+
+17. Plot Rate variation through time: color density plot
+
+```{r}
+plot.new()
+#par(mfrow=c(1,3))
+st <- max(branching.times(tree))
+plotRateThroughTime(edata, intervalCol="red", avgCol="red", start.time=st, ylim=c(0,0.2), cex.axis=1)
+text(x=200, y= 0.15, label="Neotropical", font=2, cex=2.0, pos=4)
+```
+
+18. Plot Cohort Matrix data - pairwise probability that any two species share a common macroevolutionary rate dynamic
+
+```{r}
+cmat <- getCohortMatrix(edata) # share a common ancestral is in red
+cohorts(cmat, edata)
+```
+
+19.The cumulative shift probability tree shows the cumulative probability, on each branch, that a shift occurred somewhere between the focal branch and the root of the tree
+
+```{r}
+cst <- cumulativeShiftProbsTree(edata)
+edgecols <- rep('black', length(tree$edge.length))
+is_highprobshift <- cst$edge.length >= 0.95
+edgecols[ is_highprobshift ] <- "red"
+plot.phylo(tree, edge.color = edgecols, cex = 0.1)
+```
+
+20. PLOT the best shift configuration (section 15) for your data in a circular way
+
+```{r}
+plot.bammdata(best, lwd=c(0.5,0.5), method="polar", pal="temperature", legend = T)
+```
