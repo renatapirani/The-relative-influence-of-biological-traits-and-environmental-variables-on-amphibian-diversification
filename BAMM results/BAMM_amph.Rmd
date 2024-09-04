@@ -1,0 +1,199 @@
+---
+title: "BAMM_amphibians_data phylogeny"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-01-26"
+---
+
+######################
+2.  BAMM Results
+#####################
+
+```{r}
+tree <- read.tree("Amph.final.tre")
+edata <- getEventData(tree, eventdata = "event_data.txt", burnin=0.1) #test with 5 million gen
+
+## Assessing MCMC convergence
+mcmcout <- read.csv("mcmc_out.txt", header=T)
+plot(mcmcout$logLik ~ mcmcout$generation)
+```
+
+2.1. Matrix of Bayes factors. Total number of shifts = 38
+
+```{r}
+computeBayesFactors(mcmcout, expectedNumberOfShifts=50, burnin=0.1)
+```
+
+2.2. Graphic showing the priors
+
+```{r}
+plotPrior(mcmcout, expectedNumberOfShifts=50)
+```
+
+2.3.  Discart 10% of burnin
+
+```{r}
+burnstart <- floor(0.1 * nrow(mcmcout))
+postburn <- mcmcout[burnstart:nrow(mcmcout), ]
+```
+
+2.4.  Check the effective sample sizes of the log-likelihood and the number of shift events present in each sample ( ideal is to be > 200)
+
+```{r}
+library(coda)
+effectiveSize(postburn$N_shifts) # = 404.7757
+effectiveSize(postburn$logLik) # = 273.5901  
+```
+
+2.5.  Posterior probabilities of each rate shift count observed during simulation of the posterior.
+
+```{r}
+shift_probs <- summary(edata) #
+```
+
+2.6.  Estimating clade-specific rates, which compute the overall rate of speciation, extinction, or trait evolution
+
+```{r}
+## Calculation of extinction and Speciation rates and for all the amphibians
+allrates <- getCladeRates(edata)
+
+## mean speciation rate for the data and estimate the 90% highest posterior density 
+mean(allrates$lambda) # = 0.06066985, low speciation
+mean(allrates$mu) # = 0.005595196
+mean(edata$meanTipMu) # = 0.006922332
+quantile(allrates$lambda, c(0.05, 0.95))
+```
+
+2.7. How to find the most recent ancestral data (plot labels by family)
+
+```{r}
+plotRateThroughTime(edata, ratetype="speciation") # for all species
+plot.phylo(tree, ftype="i",fsize=0.2,lwd=1, cex = 0.1)
+nodelabels()      ## check the clades number for each family / plot it in the normal R version 
+
+## another way to get the nodes labels - Higher clade with high Speciation rates
+species1 <- "Telmatobius_niger"
+species2 <- "Telmatobius_vellardi"
+tipnode1 <- which(tree$tip.label == species1)
+tipnode2 <- which(tree$tip.label == species2)
+mrca <- getMRCA(tree, tip = c(tipnode1, tipnode2))
+plotRateThroughTime(edata, node = mrca, nodetype="include", ylim=c(0,0.7)) #plot only the clade that you selected
+```
+
+2.8. Calculate speciation rates for a specific clade - check the getMRCA function first
+
+```{r}
+Telmatobius_rates <- getCladeRates(edata, node=11777) # I know this clade has high speciation rates
+mean(Telmatobius_rates$lambda) # = 0.05386437, high compare to the rest of the tree
+```
+
+2.9. Computing the mean rate only for the background lineages, excluding the selected clades using 'node'
+
+```{r}
+non_Telm_rate <- getCladeRates(edata, node = 11777, nodetype = "exclude")
+mean(non_Telm_rate$lambda)
+quantile(non_Telm_rate$lambda, c(0.05, 0.95))
+```
+
+2.10. Prior distribution on the number of rate shifts (recommended)
+
+```{r}
+css <- credibleShiftSet(edata, expectedNumberOfShifts=50, threshold=5, set.limit = 0.95)
+css$number.distinct # = 8544
+css$indices[[1]] # = 1003 1004
+summary(css)
+#plot.credibleshiftset(css, plot.max = 9)
+```
+
+2.11. Maximum clade credibility tree - extract the shift configuration that maximizes the marginal probability of rate shifts along individual branches
+
+```{r}
+msc.set <- maximumShiftCredibility(edata, maximize='product')
+msc.config <- subsetEventData(edata, index = msc.set$sampleindex)
+plot.bammdata(msc.config, lwd=2)
+addBAMMshifts(msc.config, cex = 2)
+```
+
+2.12.Finding the single best shift configuration
+
+```{r}
+best <- getBestShiftConfiguration(edata, expectedNumberOfShifts=50)
+plot.bammdata(best, lwd = 2)
+addBAMMshifts(best, cex=1.5) ## for this to work plot in the normal version of R
+```
+
+2.13. Viewing some random shift configurations
+
+```{r}
+dsc <- distinctShiftConfigurations(edata, expectedNumberOfShifts=50, threshold=5)
+# Here is one random sample with the BEST shift configuration
+plot.bammshifts(dsc, edata, rank=1, legend=F)
+```
+
+2.14. Plot Rate variation through time: color density plot
+
+```{r}
+plot.new()
+#par(mfrow=c(1,3))
+st <- max(branching.times(tree))
+plotRateThroughTime(edata, intervalCol="red", avgCol="red", start.time=st, ylim=c(0,0.15), cex.axis=1)
+text(x=200, y= 0.12, label="Neotropical", font=2, cex=2.0, pos=4)
+```
+
+2.15. Plot Cohort Matrix data - pairwise probability that any two species share a common macroevolutionary rate dynamic
+
+```{r}
+cmat <- getCohortMatrix(edata) # share a common ancestral is in red
+cohorts(cmat, edata)
+```
+
+2.16.The cumulative shift probability tree shows the cumulative probability, on each branch, that a shift occurred somewhere between the focal branch and the root of the tree
+
+```{r}
+cst <- cumulativeShiftProbsTree(edata)
+edgecols <- rep('black', length(tree$edge.length))
+is_highprobshift <- cst$edge.length >= 0.95
+edgecols[ is_highprobshift ] <- "red"
+plot.phylo(tree, edge.color = edgecols, cex = 0.1)
+```
+
+2.17. PLOT the best shift configuration (section 15) for your data in a circular way
+
+```{r}
+plot.bammdata(best, lwd=c(0.5,0.5), method="polar", pal="temperature", legend = T, breaksmethod='jenks')
+```
+
+2.18. Plot the histogram for the colors, for more colors you can test with (breaksmethod='jenks')
+
+```{r}
+plot <- plot.bammdata(best, lwd=c(0.5,0.5), method="polar", pal="temperature", legend = T, breaksmethod='linear')
+ratesHistogram(plot, plotBrks = TRUE, xlab = 'trait rates')
+title(main='linear', cex.main=1)
+```
+
+2.19. Plot a normal histogram for the speciation rates
+
+```{r}
+plotRateThroughTime(edata, ratetype="speciation")
+
+df <- data.frame(allrates$lambda)
+ggplot(df, aes(x = allrates$lambda)) +
+  geom_density() + 
+  xlab("Speciation Rates") 
+```
+
+2.20. Get the tip rates using BAMM to be able to run PGLS
+
+```{r}
+meanlam <- getTipRates(edata, returnNetDiv = FALSE,
+                       statistic = 'mean')$lambda.avg
+meanlam
+
+# Create a vector of values for the meanlam values from BAMM
+Sp_meanlam <- data.frame(lambda_BAMM = meanlam)
+
+# Duplicate the index column so you have a new column named tiplabel
+Sp_meanlam$tiplabel <- rownames(Sp_meanlam)
+```
+
