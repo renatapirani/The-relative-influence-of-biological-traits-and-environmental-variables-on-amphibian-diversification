@@ -24,7 +24,7 @@ library(dplyr)
 
 ## upload the data
 setwd("/Users/renatapirani/Documents/UCLA/Project/Speciation_Rate/analyses_R/input")
-data <- read.csv("Traits_AMPHI_test.csv")
+data <- read.csv("TetrapodTraits_v2.0.1.csv") # I changed it for the figure BAMM
 head(data)
 summary(data)
 str(data)
@@ -71,6 +71,7 @@ amphi.vsurf <- VSURF(x = amphi[,-(1:5)], y = amphi[,4],
 # In randomForest.default(x = x, y = y, ntree = ntree.thres, mtry = mtry,  
 #    :invalid mtry: reset to within valid range
 
+
 # Checking the results
 amphi.vsurf
 summary(amphi.vsurf)
@@ -110,45 +111,51 @@ amphi.vsurf$imp.mean.dec.ind
 # First we will run a RRF using only the data selected by VSURF
 # BodyLength_mm, Longitude, BodyMass_g,TempSeasonality
 set.seed(666)
-amphi.RRF <- RRF(lambda_ClaDS ~ ., flagReg=0, data=amphi[,c(4,6,7,8,9,10,11)])
+amphi.RRF <- RRF(lambda_ClaDS ~ ., flagReg=0, data=amphi[,c(4,6,7,8,9,11,12,13,15)])
 amphi.RRF
 plot(amphi.RRF)
 gamma <- 0.5
 coefReg.estimated <- (1-gamma)+(gamma*(amphi.RRF$importance/(max(amphi.RRF$importance))))
 
+#% Var explained: 50.1
+
 # Now, run the GRRF on the coefficient and find the final importance of the predictors
-amphi.grrf <- RRF(lambda_ClaDS ~ ., flagReg=1, data=amphi[,c(4,6,7,8,9,10,11)], coefReg=coefReg.estimated, importance=T, ntree=10000, type=1)
+amphi.grrf <- RRF(lambda_ClaDS ~ ., flagReg=1, data=amphi[,c(4,6,7,8,9,11,12,13,15)], coefReg=coefReg.estimated, importance=T, ntree=10000, type=1)
 amphi.grrf
-# Mean of squared residuals: 4.542417e-06
-# % Var explained: 49.37
+# Mean of squared residuals: 0.0003548056
+# % Var explained: 50.45
 plot(amphi.grrf)
 
 RRF::importance(amphi.grrf)
-#                %IncMSE     IncNodePurity
-#BodyLength_mm   369.0073     1.3790771
-#BodyMass_g      332.2173     1.1402160
-#Longitude       462.6383     1.3295000
-#TempSeasonality 353.4255     0.9178485
+#                %IncMSE IncNodePurity
+#BodyLength_mm   409.4785     1.0997795
+#BodyMass_g      370.3333     1.0191138
+#Nocturnality    215.8147     0.1776580
+#Verticality     237.0232     0.2682718
+#AnnuMeanTemp    238.2031     0.5854794
+#AnnuPrecip      227.2837     0.4849366
+#TempSeasonality 234.9960     0.6412888
+#Elevation       215.6944     0.5106816
 
 # Cross-validation
 set.seed(667)
 step <-  1 - (1 / 10)
 
 # testing the script
-rrfcv.amphi <- rrfcv(amphi[,c(4,6,7,10,12)][,-1],
-                     amphi[,c(4,6,7,10,12)][, 1],
+rrfcv.amphi <- rrfcv(amphi[,c(4,6,7,8,9,11,12,13,15)][,-1],
+                     amphi[,c(4,6,7,8,9,11,12,13,15)][, 1],
                       cv.fold = 10,
                       step = step)
 summary(rrfcv.amphi)
 
 
 # 100 replicates of cross-validation - estou fazendo com 10
-cl <- makePSOCKcluster(4)
+cl <- makePSOCKcluster(2)
 registerDoParallel(cl)
 trials <- 10
 rrfcv.100.amphi <- foreach(icount(trials), .packages="RRF") %do% {
-  rrfcv(amphi[,c(4,6,7,10,12)][,-1],
-        amphi[,c(4,6,7,10,12)][, 1],
+  rrfcv(amphi[,c(4,6,7,8,9,11,12,13,15)][,-1],
+        amphi[,c(4,6,7,8,9,11,12,13,15)][, 1],
         cv.fold = 10,
         step = step)
 }
@@ -175,42 +182,72 @@ axis(2, at= seq(16000,30000,2000))
 dev.off()        
 
 pdf(file="Importance_amphi.pdf", width = 8, height = 8)
-RRF::varImpPlot(amphi.grrf, type = 1, main = NULL, n.var = 4, cex.axis=0.8)
+RRF::varImpPlot(amphi.grrf, type = 1, main = NULL, n.var = 8, cex.axis=0.8)
 dev.off()        
 
 
-pdf(file="Partial_amphi.pdf", width = 10, height = 3)  
-par(mfrow=c(1,4), bty='l')  # Setting layout to one row, three columns, and remove top/right box lines
-
-# Longitude
-RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,10,12)],
-                 Longitude, "lambda_ClaDS",
-                 xlab= "Longitude", ylab="Lambda ClaDS",  
-                 cex.lab = 1, main = NULL, col="royalblue2")  # Remove yaxt='n'
-box(which = "plot", bty = "l")  # Add only left and bottom box lines
+pdf(file="Partial_amphi.pdf", width = 10, height = 6)  
+par(mfrow=c(2,4), bty='l')  # Setting layout to one row, three columns, and remove top/right box lines
 
 # BodyLength_mm
-RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,10,12)],
+RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,8,9,11,12,13,15)],
                  BodyLength_mm, "lambda_ClaDS", 
-                 xlab= "Body size (mm)", ylab="",
+                 xlab= "Body size (mm)", ylab="Lambda ClaDS",
                  cex.lab = 1, main = NULL, col="royalblue2")
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
-# BIO4
-RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,10,12)],
-                 TempSeasonality, "lambda_ClaDS",
-                 xlab= "BIO4", ylab="",
-                 cex.lab = 1, main = NULL, col="royalblue2")  # Remove yaxt='n'
-box(which = "plot", bty = "l")  # Add only left and bottom box lines
-
 # BodyMass_g
-RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,10,12)],
+RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,8,9,11,12,13,15)],
                  BodyMass_g, "lambda_ClaDS",
                  xlab= "Body mass (g)", ylab="",  
                  cex.lab = 1, main = NULL, col="royalblue2")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
+# BIO1 - AnnuMeanTemp
+RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,8,9,11,12,13,15)],
+                 AnnuMeanTemp, "lambda_ClaDS",
+                 xlab= "BIO1", ylab="",
+                 cex.lab = 1, main = NULL, col="royalblue2")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+# Verticality
+RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,8,9,11,12,13,15)],
+                 Verticality, "lambda_ClaDS",
+                 xlab= "Verticality", ylab="",  
+                 cex.lab = 1, main = NULL, col="royalblue2")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+# BIO4 -  TempSeasonality
+RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,8,9,11,12,13,15)],
+                 TempSeasonality, "lambda_ClaDS",
+                 xlab= "BIO4", ylab="Lambda ClaDS",  
+                 cex.lab = 1, main = NULL, col="royalblue2")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+# BIO12 - AnnuPrep
+RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,8,9,11,12,13,15)],
+                 AnnuPrecip, "lambda_ClaDS",
+                 xlab= "BIO12", ylab="",  
+                 cex.lab = 1, main = NULL, col="royalblue2")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+# Elevation
+RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,8,9,11,12,13,15)],
+                 Elevation, "lambda_ClaDS",
+                 xlab= "Elevation", ylab="",  
+                 cex.lab = 1, main = NULL, col="royalblue2")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+# Nocturnality
+RRF::partialPlot(amphi.grrf, amphi[,c(4,6,7,8,9,11,12,13,15)],
+                 Nocturnality, "lambda_ClaDS",
+                 xlab= "Nocturnality", ylab="",  
+                 cex.lab = 1, main = NULL, col="royalblue2")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+
 dev.off()
+
 
 
 ###################################### ORDER GYMNOPHIONA ###########################
@@ -275,32 +312,33 @@ amphi.vsurf$imp.mean.dec.ind
 # First we will run a RRF using only the data selected by VSURF
 # BodyMass_g   Nocturnality     Longitude    
 set.seed(666)
-amphi.RRF <- RRF(lambda_ClaDS ~ ., flagReg=0, data=amphi_gymno[,c(4,7,8,10)])
+amphi.RRF <- RRF(lambda_ClaDS ~ ., flagReg=0, data=amphi_gymno[,c(4,6,7,8,15)])
 amphi.RRF
 plot(amphi.RRF)
 gamma <- 0.5
 coefReg.estimated <- (1-gamma)+(gamma*(amphi.RRF$importance/(max(amphi.RRF$importance))))
 
 # Now, run the GRRF on the coefficient and find the final importance of the predictors
-amphi.grrf <- RRF(lambda_ClaDS ~ ., flagReg=1, data=amphi_gymno[,c(4,7,8,10)], coefReg=coefReg.estimated, importance=T, ntree=10000, type=1)
+amphi.grrf <- RRF(lambda_ClaDS ~ ., flagReg=1, data=amphi_gymno[,c(4,6,7,8,15)], coefReg=coefReg.estimated, importance=T, ntree=10000, type=1)
 amphi.grrf
-#  Mean of squared residuals: 1.074272e-07
-# % Var explained:  42.3
+#  Mean of squared residuals: 2.157819e-05
+# % Var explained: 28.1
 plot(amphi.grrf)
 
 RRF::importance(amphi.grrf)
 #                %IncMSE IncNodePurity
-#BodyMass_g   101.0872   0.001291949
-#Nocturnality 139.4062   0.000739566
-#Longitude    133.8455   0.001457334
+#BodyLength_mm 102.22889   0.001042046
+#BodyMass_g     98.68141   0.001228991
+#Nocturnality   91.94154   0.000468940
+#Elevation      88.40263   0.001210897
 
 # Cross-validation
 set.seed(667)
 step <-  1 - (1 / 10)
 
 # testing the script
-rrfcv.amphi <- rrfcv(amphi_gymno[,c(4,7,8,10)][,-1],
-                     amphi_gymno[,c(4,7,8,10)][, 1],
+rrfcv.amphi <- rrfcv(amphi_gymno[,c(4,6,7,8,15)][,-1],
+                     amphi_gymno[,c(4,6,7,8,15)][, 1],
                      cv.fold = 10,
                      step = step)
 summary(rrfcv.amphi)
@@ -311,8 +349,8 @@ cl <- makePSOCKcluster(4)
 registerDoParallel(cl)
 trials <- 10
 rrfcv.100.amphi <- foreach(icount(trials), .packages="RRF") %do% {
-  rrfcv(amphi_gymno[,c(4,7,8,10)][,-1],
-        amphi_gymno[,c(4,7,8,10)][, 1],
+  rrfcv(amphi_gymno[,c(4,6,7,8,15)][,-1],
+        amphi_gymno[,c(4,6,7,8,15)][, 1],
         cv.fold = 10,
         step = step)
 }
@@ -339,33 +377,43 @@ axis(2, at= seq(16000,30000,2000))
 dev.off()        
 
 pdf(file="Importance_amphi.pdf", width = 8, height = 8)
-RRF::varImpPlot(amphi.grrf, type = 1, main = NULL, n.var = 3, cex.axis=0.8)
+RRF::varImpPlot(amphi.grrf, type = 1, main = NULL, n.var = 4, cex.axis=0.8)
 dev.off()        
 
+
 ## Partial plots
-pdf(file="Partial_amphi.pdf", width = 8, height = 5)  
+pdf(file="Partial_amphi.pdf", width = 10, height = 6)  
 par(mfrow=c(2,4), bty='l')  # Setting layout to one row, three columns, and remove top/right box lines
 
 # Nocturnality
-RRF::partialPlot(amphi.grrf, amphi_gymno[,c(4,7,8,10)],
+RRF::partialPlot(amphi.grrf, amphi_gymno[,c(4,6,7,8,15)],
                  Nocturnality, "lambda_ClaDS", 
                  xlab= "Nocturnality", ylab="Lambda ClaDS",
                  cex.lab = 1, main = NULL, col="mediumpurple")
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
-# Longitude
-RRF::partialPlot(amphi.grrf, amphi_gymno[,c(4,7,8,10)],
-                 Longitude, "lambda_ClaDS",
-                 xlab= "Longitude", ylab="",  # No y-axis label
+# Elevation
+RRF::partialPlot(amphi.grrf, amphi_gymno[,c(4,6,7,8,15)],
+                 Elevation, "lambda_ClaDS",
+                 xlab= "Elevation", ylab="",  # No y-axis label
                  cex.lab = 1, main = NULL, col="mediumpurple")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
 # BodyMass_g
-RRF::partialPlot(amphi.grrf, amphi_gymno[,c(4,7,8,10)],
+RRF::partialPlot(amphi.grrf, amphi_gymno[,c(4,6,7,8,15)],
                  BodyMass_g, "lambda_ClaDS",
                  xlab= "Body mass (g)", ylab="",  # No y-axis label
                  cex.lab = 1, main = NULL, col="mediumpurple")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+# Bodysize
+RRF::partialPlot(amphi.grrf, amphi_gymno[,c(4,6,7,8,15)],
+                 BodyLength_mm, "lambda_ClaDS",
+                 xlab= "Body size (mm)", ylab="",  # No y-axis label
+                 cex.lab = 1, main = NULL, col="mediumpurple")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+
 
 dev.off()
 
@@ -432,28 +480,30 @@ amphi.vsurf$imp.mean.dec.ind
 # First we will run a RRF using only the data selected by VSURF
 # BodyLength_mm, Longitude, BodyMass_g,TempSeasonality
 set.seed(666)
-amphi.RRF <- RRF(lambda_ClaDS ~ ., flagReg=0, data=amphi_anura[,c(4,6,7,8,9,10,11,12)])
+amphi.RRF <- RRF(lambda_ClaDS ~ ., flagReg=0, data=amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)])
 amphi.RRF
 plot(amphi.RRF)
 gamma <- 0.5
 coefReg.estimated <- (1-gamma)+(gamma*(amphi.RRF$importance/(max(amphi.RRF$importance))))
 
 # Now, run the GRRF on the coefficient and find the final importance of the predictors
-amphi.grrf <- RRF(lambda_ClaDS ~ ., flagReg=1, data=amphi_anura[,c(4,6,7,8,9,10,11,12)], coefReg=coefReg.estimated, importance=T, ntree=10000, type=1)
+amphi.grrf <- RRF(lambda_ClaDS ~ ., flagReg=1, data=amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)], coefReg=coefReg.estimated, importance=T, ntree=10000, type=1)
 amphi.grrf
-#  Mean of squared residuals: 4.517875e-06
-# % Var explained: 40.13
+#Mean of squared residuals: 0.0003250946
+#% Var explained: 31.21
 plot(amphi.grrf)
 
 RRF::importance(amphi.grrf)
 #              %IncMSE IncNodePurity
-#BodyLength_mm   263.8935     0.4372371
-#BodyMass_g      272.8328     0.4924183
-#Nocturnality    252.6098     0.1111768
-#Verticality     372.7620     0.2081072
-#Longitude       367.9320     0.5299338
-#Latitude        281.2982     0.4987869
-#TempSeasonality 259.1692     0.4408220
+#odyLength_mm     212.2647    0.40550045
+#BodyMass_g        230.0653    0.41664470
+#Nocturnality      175.2833    0.09734054
+#Verticality       310.8631    0.17795781
+#AnnuMeanTemp      218.9060    0.34070476
+#AnnuPrecip        217.8600    0.31644102
+#TempSeasonality   321.7548    0.44685341
+#PrecipSeasonality 207.9317    0.30842441
+#Elevation         188.8207    0.30224683
 
 
 # Cross-validation
@@ -461,8 +511,8 @@ set.seed(667)
 step <-  1 - (1 / 10)
 
 # testing the script
-rrfcv.amphi <- rrfcv(amphi_anura[,c(4,6,7,8,9,10,11,12)][,-1],
-                     amphi_anura[,c(4,6,7,8,9,10,11,12)][, 1],
+rrfcv.amphi <- rrfcv(amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)][,-1],
+                     amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)][, 1],
                      cv.fold = 10,
                      step = step)
 summary(rrfcv.amphi)
@@ -473,8 +523,8 @@ cl <- makePSOCKcluster(4)
 registerDoParallel(cl)
 trials <- 10
 rrfcv.100.amphi <- foreach(icount(trials), .packages="RRF") %do% {
-  rrfcv(amphi_anura[,c(4,6,7,8,9,10,11,12)][,-1],
-        amphi_anura[,c(4,6,7,8,9,10,11,12)][, 1],
+  rrfcv(amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)][,-1],
+        amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)][, 1],
         cv.fold = 10,
         step = step)
 }
@@ -503,63 +553,85 @@ dev.off()
 
 # Importance plot
 pdf(file="Importance_amphi.pdf", width = 8, height = 8)
-RRF::varImpPlot(amphi.grrf, type = 1, main = NULL, n.var = 7, cex.axis=0.8)
+RRF::varImpPlot(amphi.grrf, type = 1, main = NULL, n.var = 9, cex.axis=0.8)
 dev.off() 
 
 # Partial plots
-pdf(file="Partial_amphi.pdf", width = 8, height = 5)  
-par(mfrow=c(2,4), bty='l')  # Setting layout to one row, three columns, and remove top/right box lines
+pdf(file="Partial_amphi.pdf", width = 10, height = 7)  
+par(mfrow=c(3,4), bty='l')  # Setting layout to one row, three columns, and remove top/right box lines
 
 # Verticality
-RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,10,11,12)],
+RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)],
                  Verticality, "lambda_ClaDS",
                  xlab= "Verticality", ylab="Lambda ClaDS",  
                  cex.lab = 1, main = NULL, col="olivedrab2")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
-# Longitude
-RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,10,11,12)],
-                 Longitude, "lambda_ClaDS", 
-                 xlab= "Longitude", ylab="",
+# TempSeasonality - BIO4
+RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)],
+                 TempSeasonality, "lambda_ClaDS", 
+                 xlab= "BIO4", ylab="",
                  cex.lab = 1, main = NULL, col="olivedrab2")
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
-# Latitude
-RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,10,11,12)],
-                 Latitude, "lambda_ClaDS",
-                 xlab= "Latitude", ylab="",  # No y-axis label
+# BodyLength_mm
+RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)],
+                 BodyLength_mm, "lambda_ClaDS",
+                 xlab= "Body size (mm)", ylab="",  
                  cex.lab = 1, main = NULL, col="olivedrab2")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
 # BodyMass_g
-RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,10,11,12)],
+RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)],
                  BodyMass_g, "lambda_ClaDS",
                  xlab= "Body mass (g)", ylab="",  
                  cex.lab = 1, main = NULL, col="olivedrab2")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
-# BodyLength_mm
-RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,10,11,12)],
-                 BodyLength_mm, "lambda_ClaDS",
-                 xlab= "Body size (mm)", ylab="Lambda ClaDS",  
+
+# AnnuPrecip - 
+RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)],
+                 AnnuPrecip, "lambda_ClaDS",
+                 xlab= "BIO12", ylab="lambda ClaDS",  # No y-axis label
                  cex.lab = 1, main = NULL, col="olivedrab2")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
-# TempSeasonality
-RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,10,11,12)],
-                 TempSeasonality, "lambda_ClaDS",
-                 xlab= "BIO4", ylab="",  
+
+#AnnuMeanTemp
+RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)],
+                 AnnuMeanTemp, "lambda_ClaDS",
+                 xlab= "BIO1", ylab="",  
                  cex.lab = 1, main = NULL, col="olivedrab2")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+# PrecipSeasonality
+RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)],
+                 PrecipSeasonality, "lambda_ClaDS",
+                 xlab= "BIO15", ylab="",  
+                 cex.lab = 1, main = NULL, col="olivedrab2")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+
+# Elevation
+RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)],
+                 Elevation, "lambda_ClaDS",
+                 xlab= "Elevation", ylab="",  
+                 cex.lab = 1, main = NULL, col="olivedrab2")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
 
 # Nocturnality
-RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,10,11,12)],
+RRF::partialPlot(amphi.grrf, amphi_anura[,c(4,6,7,8,9,11,12,13,14,15)],
                  Nocturnality, "lambda_ClaDS",
-                 xlab= "Nocturnality", ylab="",  
+                 xlab= "Nocturnality", ylab="lambda ClaDS",  
                  cex.lab = 1, main = NULL, col="olivedrab2")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
 dev.off()
+
+
+
+
 
 
 ###################################### ORDER CAUDATA ###########################
@@ -623,25 +695,28 @@ amphi.vsurf$imp.mean.dec.ind
 
 # First we will run a RRF using only the data selected by VSURF
 set.seed(666)
-amphi.RRF <- RRF(lambda_ClaDS ~ ., flagReg=0, data=amphi_caudata[,c(4,7,11,12,6,10,14,9)])
+amphi.RRF <- RRF(lambda_ClaDS ~ ., flagReg=0, data=amphi_caudata[,c(4,6,7,9,11,12,13,14)])
 amphi.RRF
 plot(amphi.RRF)
 gamma <- 0.5
 coefReg.estimated <- (1-gamma)+(gamma*(amphi.RRF$importance/(max(amphi.RRF$importance))))
 
 # Now, run the GRRF on the coefficient and find the final importance of the predictors
-amphi.grrf <- RRF(lambda_ClaDS ~ ., flagReg=1, data=amphi_caudata[,c(4,7,11,12,6,10,14,9)], coefReg=coefReg.estimated, importance=T, ntree=10000, type=1)
+amphi.grrf <- RRF(lambda_ClaDS ~ ., flagReg=1, data=amphi_caudata[,c(4,6,7,9,11,12,13,14)], coefReg=coefReg.estimated, importance=T, ntree=10000, type=1)
 amphi.grrf
-#  Mean of squared residuals: 6.314227e-06
-# % Var explained: 0.96
+#MMean of squared residuals: 0.0003903136
+# % Var explained: 77.73
 plot(amphi.grrf)
 
 RRF::importance(amphi.grrf)
 #                %IncMSE IncNodePurity
-# BodyLength_mm     39.30269  0.0008787689
-# Nocturnality      35.13756  0.0005470041
-# Latitude          27.85079  0.0008991927
-# PrecipSeasonality 33.14919  0.0009860312
+#BodyLength_mm     118.2643    0.12216132
+#BodyMass_g        179.5174    0.20460553
+#Verticality       106.2226    0.03154278
+#AnnuMeanTemp      147.5114    0.24531886
+#AnnuPrecip        119.6747    0.10291116
+#TempSeasonality   237.1378    0.33236880
+#PrecipSeasonality 120.2694    0.08213524
 
 
 # Cross-validation
@@ -649,8 +724,8 @@ set.seed(667)
 step <-  1 - (1 / 10)
 
 # testing the script
-rrfcv.amphi <- rrfcv(amphi_caudata[,c(4,7,11,12,6,10,14,9)][,-1],
-                     amphi_caudata[,c(4,7,11,12,6,10,14,9)][, 1],
+rrfcv.amphi <- rrfcv(amphi_caudata[,c(4,6,7,9,11,12,13,14)][,-1],
+                     amphi_caudata[,c(4,6,7,9,11,12,13,14)][, 1],
                      cv.fold = 10,
                      step = step)
 summary(rrfcv.amphi)
@@ -661,8 +736,8 @@ cl <- makePSOCKcluster(4)
 registerDoParallel(cl)
 trials <- 10
 rrfcv.100.amphi <- foreach(icount(trials), .packages="RRF") %do% {
-  rrfcv(amphi_caudata[,c(4,7,11,12,6,10,14,9)][,-1],
-        amphi_caudata[,c(4,7,11,12,6,10,14,9)][, 1],
+  rrfcv(amphi_caudata[,c(4,6,7,9,11,12,13,14)][,-1],
+        amphi_caudata[,c(4,6,7,9,11,12,13,14)][, 1],
         cv.fold = 10,
         step = step)
 }
@@ -689,58 +764,62 @@ axis(2, at= seq(16000,30000,2000))
 dev.off()        
 
 pdf(file="Importance_amphi.pdf", width = 8, height = 8)
-RRF::varImpPlot(amphi.grrf, type = 1, main = NULL, n.var = 4, cex.axis=0.8)
+RRF::varImpPlot(amphi.grrf, type = 1, main = NULL, n.var = 7, cex.axis=0.8)
 dev.off() 
 
 # Partial plots
-pdf(file="Partial_amphi.pdf", width = 8, height = 5)  
+pdf(file="Partial_amphi.pdf", width = 10, height = 6)  
 par(mfrow=c(2,4), bty='l')  # Setting layout to one row, three columns, and remove top/right box lines
 
 
-# Body mass
-RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,7,11,12,6,10,14,9)],
-                 BodyMass_g, "lambda_ClaDS",
-                 xlab= "Body mass (g)", ylab="Lambda ClaDS",  
-                 cex.lab = 1, main = NULL, col="orange2")  # Remove yaxt='n'
-box(which = "plot", bty = "l")  # Add only left and bottom box lines
-
-# Latitude
-RRF::partialPlot(amphi.grrf,amphi_caudata[,c(4,7,11,12,6,10,14,9)],
-                 Latitude, "lambda_ClaDS", 
-                 xlab= "Latitude", ylab="",
-                 cex.lab = 1, main = NULL, col="orange2")
-box(which = "plot", bty = "l")  # Add only left and bottom box lines
-
-# TempSeasonality
-RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,7,11,12,6,10,14,9)],
+# TempSeasonality - BIO4
+RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,6,7,9,11,12,13,14)],
                  TempSeasonality, "lambda_ClaDS",
-                 xlab= "BIO4", ylab="",  
+                 xlab= "BIO4", ylab="Lambda ClaDS",  
                  cex.lab = 1, main = NULL, col="orange2")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
-# BodyLength_mm
-RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,7,11,12,6,10,14,9)],
-                 BodyLength_mm, "lambda_ClaDS",
-                 xlab= "Body size (mm)", ylab="",  
-                 cex.lab = 1, main = NULL, col="orange2")  # Remove yaxt='n'
-box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
-# Longitude
-RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,7,11,12,6,10,14,9)],
-                 Longitude, "lambda_ClaDS",
-                 xlab= "Longitude", ylab="Lambda ClaDS", 
+# Body mass
+RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,6,7,9,11,12,13,14)],
+                 BodyMass_g, "lambda_ClaDS",
+                 xlab= "Body mass (g)", ylab="",  
                  cex.lab = 1, main = NULL, col="orange2")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
 # AnnuMeanTemp
-RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,7,11,12,6,10,14,9)],
+RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,6,7,9,11,12,13,14)],
                  AnnuMeanTemp, "lambda_ClaDS",
                  xlab= "BIO1", ylab="",  # No y-axis label
                  cex.lab = 1, main = NULL, col="orange2")  # Remove yaxt='n'
 box(which = "plot", bty = "l")  # Add only left and bottom box lines
 
+
+# PrecipSeasonality
+RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,6,7,9,11,12,13,14)],
+                 PrecipSeasonality, "lambda_ClaDS",
+                 xlab= "BIO15", ylab="",  # No y-axis label
+                 cex.lab = 1, main = NULL, col="orange2")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+
+# BodyLength_mm
+RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,6,7,9,11,12,13,14)],
+                 BodyLength_mm, "lambda_ClaDS",
+                 xlab= "Body size (mm)", ylab="lambda ClaDS",  
+                 cex.lab = 1, main = NULL, col="orange2")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+# AnnuPrecip
+RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,6,7,9,11,12,13,14)],
+                 AnnuPrecip, "lambda_ClaDS",
+                 xlab= "BIO12", ylab="", 
+                 cex.lab = 1, main = NULL, col="orange2")  # Remove yaxt='n'
+box(which = "plot", bty = "l")  # Add only left and bottom box lines
+
+
 # Verticality
-RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,7,11,12,6,10,14,9)],
+RRF::partialPlot(amphi.grrf, amphi_caudata[,c(4,6,7,9,11,12,13,14)],
                  Verticality, "lambda_ClaDS",
                  xlab= "Verticality", ylab="",  # No y-axis label
                  cex.lab = 1, main = NULL, col="orange2")  # Remove yaxt='n'
